@@ -51,8 +51,16 @@ jobs:
           key: buildozer-project-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK
-        run: |
-          yes | buildozer android debug
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 45
+          max_attempts: 3
+          retry_wait_seconds: 30
+          # Source downloads (e.g. GNU Savannah for freetype) occasionally
+          # 504 / time out from CI IP ranges. .buildozer/ persists between
+          # attempts within the same job, so a retry resumes instead of
+          # rebuilding everything from scratch.
+          command: yes | buildozer android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
