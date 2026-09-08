@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local dev database / generated data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Backups and exports produced by the app at runtime
+backups/*.db
+exports/*.csv
+
+# Buildozer / python-for-android
+.buildozer/
+bin/
+*.apk
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
