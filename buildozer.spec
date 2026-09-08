@@ -13,7 +13,11 @@ version = 1.0.0
 
 # python3, kivy, kivymd for the UI; sqlite3 is explicit so python-for-android
 # always includes the stdlib sqlite3 recipe in the build.
-requirements = python3,kivy==2.2.1,kivymd==1.1.1,sqlite3,pillow
+# python3 is pinned to 3.11 because Kivy 2.2.1's build pulls in an older
+# Cython that still does `import cgi` internally - a module removed from
+# the stdlib in Python 3.13+. 3.11 keeps that module available and is a
+# well-tested target version for Kivy/buildozer Android builds.
+requirements = python3==3.11.9,kivy==2.2.1,kivymd==1.1.1,sqlite3,pillow
 
 orientation = portrait
 fullscreen = 0
