@@ -19,6 +19,11 @@ version = 1.0.0
 # well-tested target version for Kivy/buildozer Android builds.
 requirements = python3==3.11.9,kivy==2.2.1,kivymd==1.1.1,sqlite3,pillow
 
+# Local recipe overrides (see p4a-recipes/freetype) - GNU Savannah's
+# download server has been unreachable from GitHub Actions' network, so
+# the freetype recipe there fetches from FreeType's GitHub mirror instead.
+p4a.local_recipes = %(source.dir)s/p4a-recipes
+
 orientation = portrait
 fullscreen = 0
 
