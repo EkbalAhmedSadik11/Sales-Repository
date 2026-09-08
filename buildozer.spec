@@ -17,7 +17,9 @@ version = 1.0.0
 # Cython that still does `import cgi` internally - a module removed from
 # the stdlib in Python 3.13+. 3.11 keeps that module available and is a
 # well-tested target version for Kivy/buildozer Android builds.
-requirements = python3==3.11.9,kivy==2.2.1,kivymd==1.1.1,sqlite3,pillow
+# hostpython3 must be pinned to the exact same version as python3 - p4a
+# requires them to match and does not infer one from the other.
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.2.1,kivymd==1.1.1,sqlite3,pillow
 
 # Local recipe overrides (see p4a-recipes/freetype) - GNU Savannah's
 # download server has been unreachable from GitHub Actions' network, so
