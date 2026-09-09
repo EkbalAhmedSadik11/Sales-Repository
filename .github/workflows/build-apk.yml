@@ -57,7 +57,7 @@ jobs:
           # reuse it instead of re-running configure.
           key: buildozer-project-${{ runner.os }}-${{ hashFiles('buildozer.spec', '.github/workflows/build-apk.yml') }}
 
-      - name: Pre-clone python-for-android and fix its pip self-upgrade step
+      - name: Pre-clone python-for-android and skip its broken pip self-upgrade
         run: |
           P4A_DIR=".buildozer/android/platform/python-for-android"
           mkdir -p "$(dirname "$P4A_DIR")"
@@ -65,21 +65,23 @@ jobs:
             git clone -b master --single-branch https://github.com/kivy/python-for-android.git "$P4A_DIR"
           fi
           # python-for-android's run_pymodules_install() upgrades pip inside
-          # a fresh venv by running the venv's `pip` console-script entry
-          # point ("pip install -U pip"). Self-upgrading pip that way - via
-          # its own currently-running entry-point script rather than
-          # `python -m pip` - reproducibly corrupts the install mid-way
-          # (the running process's own files get overwritten under it),
-          # breaking every retry identically with:
+          # a fresh venv ("pip install -U pip") before pip-installing the
+          # requirements that aren't recipes (kivymd, requests, etc). That
+          # upgrade reproducibly breaks with:
           #   ImportError: cannot import name 'open_rich_spinner' from
           #   'pip._internal.cli.spinners'
-          # `python -m pip` re-resolves the pip module fresh on each
-          # invocation instead of going through that stale script wrapper,
-          # which avoids the failure mode entirely.
-          sed -i 's/pip install -U pip/python -m pip install -U pip/' \
-            "$P4A_DIR/pythonforandroid/build.py"
-          grep -n "python -m pip install -U pip" "$P4A_DIR/pythonforandroid/build.py" \
-            || echo "::warning::pip self-upgrade patch pattern not found - build.py may have changed upstream"
+          # Tried invoking it as `python -m pip install -U pip` instead of
+          # through the venv's `pip` console-script (a known footgun for
+          # self-upgrading pip) - identical failure either way, so this
+          # isn't an invocation-style issue. It reproduces 100% of the time
+          # regardless, which points at a broken/inconsistent pip release
+          # on PyPI (or a corrupted local wheel cache) rather than anything
+          # about how or when it's called. There's no real need for this
+          # step to succeed at all: ensurepip's bundled pip (already in the
+          # venv) is perfectly capable of installing these plain-Python
+          # packages without upgrading first - so just skip the upgrade.
+          sed -i 's/pip install -U pip/true/' "$P4A_DIR/pythonforandroid/build.py"
+          sed -n '878p' "$P4A_DIR/pythonforandroid/build.py"
 
       - name: Build APK
         uses: nick-fields/retry@v3
