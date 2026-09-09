@@ -51,11 +51,10 @@ jobs:
           # Includes the workflow file itself (not just buildozer.spec):
           # this cache holds partially-built recipe directories (already
           # `./configure`'d, Makefile generated). A change to *how* we
-          # build (e.g. new env vars for the Build APK step) doesn't
-          # touch buildozer.spec, so without this a stale, already-
-          # configured build dir from before the change would keep
-          # getting restored and `make` would silently reuse it instead
-          # of re-running configure - exactly what happened here.
+          # build doesn't necessarily touch buildozer.spec, so without
+          # this a stale, already-configured build dir from before the
+          # change would keep getting restored and `make` would silently
+          # reuse it instead of re-running configure.
           key: buildozer-project-${{ runner.os }}-${{ hashFiles('buildozer.spec', '.github/workflows/build-apk.yml') }}
 
       - name: Build APK
@@ -69,21 +68,6 @@ jobs:
           # attempts within the same job, so a retry resumes instead of
           # rebuilding everything from scratch.
           command: yes | buildozer android debug
-        env:
-          # Android's Bionic libc has no setgrent()/getgrent()/endgrent()
-          # (only getgrgid()/getgrnam()). CPython's ./configure otherwise
-          # detects them as present, so Modules/grpmodule.c tries to call
-          # them and the NDK's clang errors out on the implicit
-          # declaration instead of warning. These autoconf cache
-          # variables tell configure the three functions are
-          # unavailable, so grpmodule.c stops wrapping them - the rest
-          # of the grp module (getgrgid/getgrnam) is unaffected. Set at
-          # the job-environment level (rather than a recipe override) so
-          # python-for-android's own patches still apply from their real
-          # upstream location.
-          ac_cv_func_setgrent: "no"
-          ac_cv_func_getgrent: "no"
-          ac_cv_func_endgrent: "no"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
