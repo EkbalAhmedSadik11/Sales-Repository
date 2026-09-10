@@ -1,0 +1,131 @@
+name: Diagnose crash on emulator
+
+# Diagnostic-only workflow: builds an x86_64 debug APK (fast on a
+# KVM-accelerated CI emulator - the shipped arm64-v8a/armeabi-v7a build
+# from build-apk.yml can't be emulated quickly here) and launches it on
+# a virtual device to capture the actual crash log. The app's crash is a
+# Python/Kivy-level bug, not native/architecture-specific code, so a
+# crash here is the same crash on a real phone.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build-x86_64-debug:
+    runs-on: ubuntu-22.04
+    outputs:
+      apk_name: ${{ steps.find_apk.outputs.apk_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip autoconf automake libtool pkg-config cmake \
+            build-essential libffi-dev libssl-dev zlib1g-dev libltdl-dev \
+            ccache
+
+      - name: Install buildozer & Cython
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install "Cython==0.29.33" buildozer
+
+      - name: Switch build target to x86_64 only (diagnostic build)
+        run: |
+          sed -i 's/^android.archs = .*/android.archs = x86_64/' buildozer.spec
+          grep '^android.archs' buildozer.spec
+
+      - name: Cache Android SDK/NDK (buildozer global dir)
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-global-x86_64-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-global-x86_64-${{ runner.os }}-
+
+      - name: Cache buildozer project build dir
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-project-x86_64-${{ runner.os }}-${{ hashFiles('buildozer.spec', '.github/workflows/test-emulator.yml') }}
+
+      - name: Pre-clone python-for-android and skip its broken pip self-upgrade
+        run: |
+          P4A_DIR=".buildozer/android/platform/python-for-android"
+          mkdir -p "$(dirname "$P4A_DIR")"
+          if [ ! -d "$P4A_DIR" ]; then
+            git clone -b master --single-branch https://github.com/kivy/python-for-android.git "$P4A_DIR"
+          fi
+          sed -i 's/pip install -U pip/true/' "$P4A_DIR/pythonforandroid/build.py"
+
+      - name: Build x86_64 debug APK
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 45
+          max_attempts: 2
+          retry_wait_seconds: 30
+          command: yes | buildozer android debug
+
+      - name: Find built APK
+        id: find_apk
+        run: |
+          APK_PATH=$(ls bin/*.apk | head -n1)
+          echo "apk_name=$(basename "$APK_PATH")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sales-repository-x86_64-debug-apk
+          path: bin/*.apk
+          if-no-files-found: error
+
+  run-and-capture-crash:
+    needs: build-x86_64-debug
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download x86_64 debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: sales-repository-x86_64-debug-apk
+          path: apk
+
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install and launch on emulator, capture crash log
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          profile: pixel_5
+          disable-animations: true
+          script: |
+            APK=$(ls apk/*.apk | head -n1)
+            echo "Installing: $APK"
+            adb install -r "$APK"
+            adb logcat -c
+            echo "Launching org.salesrepository.salesrepository/org.kivy.android.PythonActivity"
+            adb shell am start -n org.salesrepository.salesrepository/org.kivy.android.PythonActivity
+            sleep 20
+            echo "===== is the process still alive? ====="
+            adb shell pidof org.salesrepository.salesrepository || echo "PROCESS NOT RUNNING (crashed or never started)"
+            echo "===== relevant logcat (python / crash / app package) ====="
+            adb logcat -d | grep -iE "python|AndroidRuntime|FATAL|Traceback|salesrepository|pyjnius" || echo "(no matching lines)"
+            echo "===== full logcat tail (last 400 lines, for context) ====="
+            adb logcat -d | tail -n 400
