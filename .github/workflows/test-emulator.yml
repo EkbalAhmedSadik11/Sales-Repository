@@ -94,6 +94,8 @@ jobs:
     needs: build-x86_64-debug
     runs-on: ubuntu-22.04
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download x86_64 debug APK
         uses: actions/download-artifact@v4
         with:
@@ -115,17 +117,4 @@ jobs:
           target: google_apis
           profile: pixel_5
           disable-animations: true
-          script: |
-            APK=$(ls apk/*.apk | head -n1)
-            echo "Installing: $APK"
-            adb install -r "$APK"
-            adb logcat -c
-            echo "Launching org.salesrepository.salesrepository/org.kivy.android.PythonActivity"
-            adb shell am start -n org.salesrepository.salesrepository/org.kivy.android.PythonActivity
-            sleep 20
-            echo "===== is the process still alive? ====="
-            adb shell pidof org.salesrepository.salesrepository || echo "PROCESS NOT RUNNING (crashed or never started)"
-            echo "===== relevant logcat (python / crash / app package) ====="
-            adb logcat -d | grep -iE "python|AndroidRuntime|FATAL|Traceback|salesrepository|pyjnius" || echo "(no matching lines)"
-            echo "===== full logcat tail (last 400 lines, for context) ====="
-            adb logcat -d | tail -n 400
+          script: bash scripts/diagnose_emulator.sh
